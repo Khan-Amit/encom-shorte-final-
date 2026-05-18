@@ -42,3 +42,19 @@ SOFTWARE.
 ```bash
 gcc sluice.c -o sluice
 ./sluice --domain 1 < input.bin > output.bin
+
+---
+
+## 🔹 What to do now
+
+| Step | Action |
+|------|--------|
+| 1 | Go to your GitHub repo (`khan-amit/encom-shorte`) |
+| 2 | Open `README.md` for editing |
+| 3 | **Delete everything** in the file |
+| 4 | **Copy the entire block above** and paste it |
+| 5 | Click **Commit changes** |
+
+
+
+Let me know when it is updated. 🙏📄
