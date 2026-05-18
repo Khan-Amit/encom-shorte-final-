@@ -1,3 +1,9 @@
+
+---
+
+## File 5: `.gitignore` (full replacement)
+
+```gitignore
 # Compiled binaries
 *.exe
 *.out
@@ -58,11 +64,11 @@ desktop.ini
 *.core
 crashdump
 
-# Python cache (if any)
+# Python cache
 __pycache__/
 *.pyc
 
-# Your specific data files (keep example configs, but ignore real data)
+# Your specific data files
 *.dat
 *.bin
 *.pcap
