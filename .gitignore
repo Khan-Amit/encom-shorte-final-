@@ -1,23 +1,79 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
-.vscode/
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
+# Compiled binaries
+*.exe
+*.out
 *.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+
+# Turbo C / Borland C specific
+*.tds
+*.map
+*.bak
+*.lnk
+*.rsp
+
+# Object / temporary files
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.exp
+*.ilk
+*.pdb
+*.idb
+*.pch
+*.ncb
+*.opt
+*.plg
+*.user
+*.suo
+
+# Debug / Release folders
+Debug/
+Release/
+x64/
+x86/
+Build/
+Temp/
+
+# Editor / OS garbage
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+*.bak
+*.orig
+
+# Logs and dumps
+*.log
+*.dmp
+*.core
+crashdump
+
+# Python cache (if any)
+__pycache__/
+*.pyc
+
+# Your specific data files (keep example configs, but ignore real data)
+*.dat
+*.bin
+*.pcap
+*.pcapng
+*.raw
+
+# Personal config files (never commit secrets)
+config.local.h
+*.key
+*.pem
+.env
+
+# Documentation build
+docs/_build/
