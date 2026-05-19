@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sluice Gate – Live Control & Fuel Gauge | encom-shorte</title>
+    <title>Sluice Gate – Live Stratum Data | encom-shorte</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0f1e; font-family: 'Courier New', monospace; color: #e0e0e0; padding: 20px; }
@@ -28,8 +28,6 @@
         button { background: #1e293b; border: none; color: #94a3b8; padding: 10px 24px; border-radius: 40px; cursor: pointer; font-family: monospace; font-size: 1rem; font-weight: bold; transition: 0.2s; }
         button:hover { background: #2d3a5e; color: white; }
         .btn-run { background: #00f2fe; color: #010409; }
-        .btn-run:hover { background: #00d4e0; }
-        .btn-pause { background: #fbbf24; color: #010409; }
         .btn-stop { background: #ef4444; color: white; }
         footer { text-align: center; padding: 16px; border-top: 1px solid #1e293b; font-size: 0.7rem; color: #475569; }
     </style>
@@ -37,8 +35,8 @@
 <body>
 <div class="dashboard">
     <div class="header">
-        <h1>⚡ Sluice Gate · Live Control <span class="live-badge" id="statusBadge">STOPPED</span></h1>
-        <p>Binary filter · 97% energy reduction · Real‑time rejection</p>
+        <h1>⚡ Sluice Gate · Live Stratum Data <span class="live-badge" id="statusBadge">STOPPED</span></h1>
+        <p>Real‑time mining.notify messages filtered by is_ripe()</p>
     </div>
     <div class="gauge-container">
         <div>
@@ -47,21 +45,20 @@
         </div>
     </div>
     <div class="stats-grid">
-        <div class="stat-card"><div class="stat-value" id="ripeRate">0</div><div class="stat-label">RIPE / sec</div></div>
-        <div class="stat-card"><div class="stat-value" id="totalScanned">0</div><div class="stat-label">Total Candidates</div></div>
+        <div class="stat-card"><div class="stat-value" id="totalJobs">0</div><div class="stat-label">Total Jobs</div></div>
+        <div class="stat-card"><div class="stat-value" id="ripeCount">0</div><div class="stat-label">RIPE Jobs</div></div>
         <div class="stat-card"><div class="stat-value" id="rejectionRate">0</div><div class="stat-label">Rejection Rate (%)</div></div>
         <div class="stat-card"><div class="stat-value" id="energySaved">0</div><div class="stat-label">Energy Saved (kWh)</div></div>
     </div>
     <div class="terminal">
-        <div class="terminal-header"><div class="terminal-dot"></div><div class="terminal-dot"></div><div class="terminal-dot"></div><span>🧪 sluice@gate:~/live$</span></div>
-        <div id="liveStream" class="terminal-content">⏸️ Paused. Press RUN to start.</div>
+        <div class="terminal-header"><div class="terminal-dot"></div><div class="terminal-dot"></div><div class="terminal-dot"></div><span>📡 Stratum Stream</span></div>
+        <div id="liveStream" class="terminal-content">⏹️ Stopped. Click RUN to connect to solo.ckpool.org</div>
     </div>
     <div class="control-bar">
-        <button id="runBtn" class="btn-run">▶ RUN</button>
-        <button id="pauseBtn" class="btn-pause">⏸ PAUSE</button>
+        <button id="runBtn" class="btn-run">▶ RUN (Real Stratum)</button>
         <button id="stopBtn" class="btn-stop">⏹ STOP</button>
     </div>
-    <footer>encom-shorte · binary pre‑filter · compiled C backend (simulated)<br>Gauge: blue (idle) → yellow (medium) → red (peak)</footer>
+    <footer>Live data from solo.ckpool.org · Each job is a real mining.notify message · is_ripe() filters in real time</footer>
 </div>
 <script>
     const canvas = document.getElementById('fuelGauge');
@@ -84,34 +81,105 @@
         ctx.fillStyle='#010409'; ctx.beginPath(); ctx.arc(cx,cy,4,0,2*Math.PI); ctx.fill();
         ctx.fillStyle='#94a3b8'; ctx.font='bold 12px monospace'; ctx.fillText('E',cx-95,cy+15); ctx.fillText('F',cx+85,cy+15);
     }
-    let iv=null, total=0, ripe=0, lastRipe=0, running=false, paused=false;
-    const statusSpan=document.getElementById('statusBadge'), streamDiv=document.getElementById('liveStream');
-    const ripeRateSpan=document.getElementById('ripeRate'), ripeRateGauge=document.getElementById('ripeRateGauge');
-    const totalSpan=document.getElementById('totalScanned'), rejectSpan=document.getElementById('rejectionRate'), energySpan=document.getElementById('energySaved');
-    function addLine(t){ let d=document.createElement('div'); d.textContent=t; streamDiv.appendChild(d); streamDiv.scrollTop=streamDiv.scrollHeight; while(streamDiv.children.length>500) streamDiv.removeChild(streamDiv.firstChild); }
-    function updStats(){
-        let rps=ripe-lastRipe; ripeRateSpan.textContent=rps; ripeRateGauge.textContent=rps;
-        drawGauge(Math.min(1,rps/500)); lastRipe=ripe; totalSpan.textContent=total;
-        let rr=total===0?0:(1-ripe/total)*100; rejectSpan.textContent=rr.toFixed(2);
-        energySpan.textContent=(total*1e-8).toFixed(6);
+
+    let total = 0, ripe = 0;
+    let streamInterval = null;
+    let running = false;
+    let ws = null;
+
+    const statusSpan = document.getElementById('statusBadge');
+    const streamDiv = document.getElementById('liveStream');
+    const totalSpan = document.getElementById('totalJobs');
+    const ripeSpan = document.getElementById('ripeCount');
+    const rejectSpan = document.getElementById('rejectionRate');
+    const energySpan = document.getElementById('energySaved');
+    const ripeRateGauge = document.getElementById('ripeRateGauge');
+
+    function addLine(text) {
+        const line = document.createElement('div');
+        line.textContent = new Date().toLocaleTimeString() + ' > ' + text;
+        streamDiv.appendChild(line);
+        streamDiv.scrollTop = streamDiv.scrollHeight;
+        while(streamDiv.children.length > 500) streamDiv.removeChild(streamDiv.firstChild);
     }
-    function tick(){
-        if(!running||paused) return;
-        let batch=Math.floor(Math.random()*200)+50, br=0;
-        for(let i=0;i<batch;i++){ total++; if(Math.random()<0.012){ br++; addLine(`🎯 RIPE nonce: ${Math.floor(Math.random()*1e8)}`); } }
-        ripe+=br; updStats();
-        if(total%1000===0) addLine(`📊 Scanned ${total} candidates · ${(ripe/total*100).toFixed(2)}% ripe · ${(total/1000).toFixed(0)}k total`);
+
+    function updateStats() {
+        totalSpan.textContent = total;
+        ripeSpan.textContent = ripe;
+        const rejectRate = total === 0 ? 0 : (1 - ripe / total) * 100;
+        rejectSpan.textContent = rejectRate.toFixed(2);
+        energySpan.textContent = (total * 0.00000001).toFixed(8);
+        const rps = Math.min(1, ripe / 100);
+        drawGauge(rps);
+        ripeRateGauge.textContent = ripe;
     }
-    function startRunner(){ if(iv) clearInterval(iv); iv=setInterval(tick,100); }
-    function stopRunner(reset=true){
-        if(iv) clearInterval(iv); iv=null; running=false; paused=false;
-        if(reset){ total=0; ripe=0; lastRipe=0; updStats(); streamDiv.innerHTML='⏹️ Stopped. Press RUN to start.'; drawGauge(0); }
-        statusSpan.textContent='STOPPED'; statusSpan.style.background='#475569';
+
+    // is_ripe() – your egg‑sorter logic
+    function isRipe(timestamp, nonce) {
+        if (timestamp % 5 !== 0) return false;
+        if (nonce < 0x100000 || nonce > 0x20000000) return false;
+        if ((nonce & 0xF) !== 0xC) return false;
+        return true;
     }
-    document.getElementById('runBtn').onclick=()=>{ if(iv) stopRunner(false); running=true; paused=false; if(!iv) startRunner(); statusSpan.textContent='RUNNING'; statusSpan.style.background='#00f2fe'; statusSpan.style.color='#010409'; if(streamDiv.innerHTML.includes('Paused')||streamDiv.innerHTML.includes('Stopped')) streamDiv.innerHTML=''; };
-    document.getElementById('pauseBtn').onclick=()=>{ if(running&&!paused){ paused=true; statusSpan.textContent='PAUSED'; statusSpan.style.background='#fbbf24'; statusSpan.style.color='#010409'; addLine('⏸️ Stream paused.'); } };
-    document.getElementById('stopBtn').onclick=()=>{ stopRunner(true); };
-    stopRunner(true);
+
+    function stopRunner() {
+        if (ws) { ws.close(); ws = null; }
+        if (streamInterval) { clearInterval(streamInterval); streamInterval = null; }
+        running = false;
+        statusSpan.textContent = 'STOPPED';
+        statusSpan.style.background = '#475569';
+    }
+
+    function startStratum() {
+        if (running) stopRunner();
+        total = 0; ripe = 0;
+        updateStats();
+        addLine('Connecting to solo.ckpool.org:3333...');
+        ws = new WebSocket('wss://solo.ckpool.org:3333');
+        ws.onopen = () => {
+            addLine('✅ Connected to Stratum pool');
+            // Subscribe and authorize
+            ws.send(JSON.stringify({id: 1, method: 'mining.subscribe', params: []}) + '\n');
+            ws.send(JSON.stringify({id: 2, method: 'mining.authorize', params: ['1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'x']}) + '\n');
+            addLine('📡 Subscribed, waiting for mining.notify...');
+            running = true;
+            statusSpan.textContent = 'RUNNING (LIVE STRATUM)';
+            statusSpan.style.background = '#00f2fe';
+            statusSpan.style.color = '#010409';
+        };
+        ws.onmessage = (event) => {
+            const msg = event.data;
+            try {
+                const json = JSON.parse(msg);
+                if (json.method === 'mining.notify') {
+                    total++;
+                    const jobData = json.params;
+                    const timestamp = Math.floor(Date.now() / 1000);
+                    const nonce = jobData[1] ? parseInt(jobData[1].substring(0, 8), 16) : 0;
+                    if (isRipe(timestamp, nonce)) {
+                        ripe++;
+                        addLine(`🎯 RIPE job: ${jobData[0]} / nonce ${nonce}`);
+                    } else {
+                        addLine(`❌ REJECTED job: ${jobData[0]} / nonce ${nonce}`);
+                    }
+                    updateStats();
+                }
+            } catch(e) { /* non‑JSON data */ }
+        };
+        ws.onerror = (err) => {
+            addLine('⚠️ WebSocket error: ' + err);
+            stopRunner();
+        };
+        ws.onclose = () => {
+            addLine('🔌 Connection closed');
+            stopRunner();
+        };
+    }
+
+    document.getElementById('runBtn').onclick = () => startStratum();
+    document.getElementById('stopBtn').onclick = () => stopRunner();
+
+    drawGauge(0);
 </script>
 </body>
 </html>
