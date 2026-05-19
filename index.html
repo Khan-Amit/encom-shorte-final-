@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sluice Gate – Live Stratum Data | encom-shorte</title>
+    <title>Sluice Gate – Live Stratum Simulation | encom-shorte</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0a0f1e; font-family: 'Courier New', monospace; color: #e0e0e0; padding: 20px; }
@@ -28,6 +28,7 @@
         button { background: #1e293b; border: none; color: #94a3b8; padding: 10px 24px; border-radius: 40px; cursor: pointer; font-family: monospace; font-size: 1rem; font-weight: bold; transition: 0.2s; }
         button:hover { background: #2d3a5e; color: white; }
         .btn-run { background: #00f2fe; color: #010409; }
+        .btn-pause { background: #fbbf24; color: #010409; }
         .btn-stop { background: #ef4444; color: white; }
         footer { text-align: center; padding: 16px; border-top: 1px solid #1e293b; font-size: 0.7rem; color: #475569; }
     </style>
@@ -35,7 +36,7 @@
 <body>
 <div class="dashboard">
     <div class="header">
-        <h1>⚡ Sluice Gate · Live Stratum Data <span class="live-badge" id="statusBadge">STOPPED</span></h1>
+        <h1>⚡ Sluice Gate · Live Stratum Simulation <span class="live-badge" id="statusBadge">STOPPED</span></h1>
         <p>Real‑time mining.notify messages filtered by is_ripe()</p>
     </div>
     <div class="gauge-container">
@@ -52,13 +53,14 @@
     </div>
     <div class="terminal">
         <div class="terminal-header"><div class="terminal-dot"></div><div class="terminal-dot"></div><div class="terminal-dot"></div><span>📡 Stratum Stream</span></div>
-        <div id="liveStream" class="terminal-content">⏹️ Stopped. Click RUN to connect to solo.ckpool.org</div>
+        <div id="liveStream" class="terminal-content">⏹️ Stopped. Click RUN to start.</div>
     </div>
     <div class="control-bar">
-        <button id="runBtn" class="btn-run">▶ RUN (Real Stratum)</button>
+        <button id="runBtn" class="btn-run">▶ RUN</button>
+        <button id="pauseBtn" class="btn-pause">⏸ PAUSE</button>
         <button id="stopBtn" class="btn-stop">⏹ STOP</button>
     </div>
-    <footer>Live data from solo.ckpool.org · Each job is a real mining.notify message · is_ripe() filters in real time</footer>
+    <footer>Simulated Stratum traffic · Identical structure to real mining.notify · Filtered by your is_ripe() logic</footer>
 </div>
 <script>
     const canvas = document.getElementById('fuelGauge');
@@ -83,9 +85,8 @@
     }
 
     let total = 0, ripe = 0;
-    let streamInterval = null;
-    let running = false;
-    let ws = null;
+    let running = false, paused = false;
+    let interval = null;
 
     const statusSpan = document.getElementById('statusBadge');
     const streamDiv = document.getElementById('liveStream');
@@ -109,12 +110,12 @@
         const rejectRate = total === 0 ? 0 : (1 - ripe / total) * 100;
         rejectSpan.textContent = rejectRate.toFixed(2);
         energySpan.textContent = (total * 0.00000001).toFixed(8);
-        const rps = Math.min(1, ripe / 100);
-        drawGauge(rps);
+        const load = Math.min(1, ripe / 50);
+        drawGauge(load);
         ripeRateGauge.textContent = ripe;
     }
 
-    // is_ripe() – your egg‑sorter logic
+    // Your egg‑sorter is_ripe() logic
     function isRipe(timestamp, nonce) {
         if (timestamp % 5 !== 0) return false;
         if (nonce < 0x100000 || nonce > 0x20000000) return false;
@@ -122,64 +123,73 @@
         return true;
     }
 
+    // Generate a realistic mining.notify‑like job
+    function generateJob() {
+        const jobId = Math.random().toString(36).substring(2, 10);
+        const prevHash = '00000000' + Math.random().toString(16).substring(2, 18);
+        const timestamp = Math.floor(Date.now() / 1000);
+        const nonce = Math.floor(Math.random() * 0x20000000) + 0x100000;
+        const ripe = isRipe(timestamp, nonce);
+        return { jobId, prevHash, timestamp, nonce, ripe };
+    }
+
+    function runTick() {
+        if (!running || paused) return;
+        const job = generateJob();
+        total++;
+        if (job.ripe) {
+            ripe++;
+            addLine(`🎯 RIPE job: ${job.jobId} / nonce ${job.nonce} / ts ${job.timestamp}`);
+        } else {
+            addLine(`❌ REJECTED job: ${job.jobId} / nonce ${job.nonce} / ts ${job.timestamp}`);
+        }
+        updateStats();
+        if (total % 20 === 0) {
+            addLine(`📊 Summary: ${total} jobs, ${ripe} ripe (${(ripe/total*100).toFixed(2)}%)`);
+        }
+    }
+
+    function startRunner() {
+        if (interval) clearInterval(interval);
+        running = true;
+        paused = false;
+        interval = setInterval(runTick, 300);
+        statusSpan.textContent = 'RUNNING';
+        statusSpan.style.background = '#00f2fe';
+        statusSpan.style.color = '#010409';
+        addLine('✅ Started. Streaming simulated Stratum jobs...');
+    }
+
+    function pauseRunner() {
+        if (running && !paused) {
+            paused = true;
+            statusSpan.textContent = 'PAUSED';
+            statusSpan.style.background = '#fbbf24';
+            statusSpan.style.color = '#010409';
+            addLine('⏸️ Paused.');
+        }
+    }
+
     function stopRunner() {
-        if (ws) { ws.close(); ws = null; }
-        if (streamInterval) { clearInterval(streamInterval); streamInterval = null; }
+        if (interval) { clearInterval(interval); interval = null; }
         running = false;
+        paused = false;
         statusSpan.textContent = 'STOPPED';
         statusSpan.style.background = '#475569';
+        addLine('⏹️ Stopped.');
     }
 
-    function startStratum() {
-        if (running) stopRunner();
+    document.getElementById('runBtn').onclick = () => {
+        if (interval) stopRunner();
         total = 0; ripe = 0;
         updateStats();
-        addLine('Connecting to solo.ckpool.org:3333...');
-        ws = new WebSocket('wss://solo.ckpool.org:3333');
-        ws.onopen = () => {
-            addLine('✅ Connected to Stratum pool');
-            // Subscribe and authorize
-            ws.send(JSON.stringify({id: 1, method: 'mining.subscribe', params: []}) + '\n');
-            ws.send(JSON.stringify({id: 2, method: 'mining.authorize', params: ['1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'x']}) + '\n');
-            addLine('📡 Subscribed, waiting for mining.notify...');
-            running = true;
-            statusSpan.textContent = 'RUNNING (LIVE STRATUM)';
-            statusSpan.style.background = '#00f2fe';
-            statusSpan.style.color = '#010409';
-        };
-        ws.onmessage = (event) => {
-            const msg = event.data;
-            try {
-                const json = JSON.parse(msg);
-                if (json.method === 'mining.notify') {
-                    total++;
-                    const jobData = json.params;
-                    const timestamp = Math.floor(Date.now() / 1000);
-                    const nonce = jobData[1] ? parseInt(jobData[1].substring(0, 8), 16) : 0;
-                    if (isRipe(timestamp, nonce)) {
-                        ripe++;
-                        addLine(`🎯 RIPE job: ${jobData[0]} / nonce ${nonce}`);
-                    } else {
-                        addLine(`❌ REJECTED job: ${jobData[0]} / nonce ${nonce}`);
-                    }
-                    updateStats();
-                }
-            } catch(e) { /* non‑JSON data */ }
-        };
-        ws.onerror = (err) => {
-            addLine('⚠️ WebSocket error: ' + err);
-            stopRunner();
-        };
-        ws.onclose = () => {
-            addLine('🔌 Connection closed');
-            stopRunner();
-        };
-    }
-
-    document.getElementById('runBtn').onclick = () => startStratum();
-    document.getElementById('stopBtn').onclick = () => stopRunner();
+        startRunner();
+    };
+    document.getElementById('pauseBtn').onclick = pauseRunner;
+    document.getElementById('stopBtn').onclick = stopRunner;
 
     drawGauge(0);
+    updateStats();
 </script>
 </body>
 </html>
